@@ -1,5 +1,5 @@
 /** Class representing a Connext client. */
-class Connext {
+export class Connext {
   /**
      * Create a point.
      * @param {Object} params - The constructor object.
