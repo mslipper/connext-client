@@ -79,10 +79,8 @@ describe('fastCloseThreadHandler()', () => {
           ethDeposit: Web3.utils.toBN(Web3.utils.toWei('0.1', 'ether'))
         },
         signer: partyA,
-        hubBond: {
-          ethDeposit: Web3.utils.toBN(Web3.utils.toWei('1', 'ether')),
-          tokenDeposit: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
-        }
+        hubEthBond: Web3.utils.toBN(Web3.utils.toWei('1', 'ether')),
+        hubTokenBond: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
       }
       const sigA = await client.createChannelStateUpdate(sigParams)
       const sigI = await client.fastCloseThreadHandler({
@@ -116,9 +114,7 @@ describe('fastCloseThreadHandler()', () => {
           ethDeposit: Web3.utils.toBN(Web3.utils.toWei('0.1', 'ether'))
         },
         signer: partyC,
-        hubBond: {
-          ethDeposit: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
-        }
+        hubEthBond: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
       }
       const sigA = await client.createChannelStateUpdate(sigParams)
       const sigI = await client.fastCloseThreadHandler({
@@ -152,9 +148,7 @@ describe('fastCloseThreadHandler()', () => {
           ethDeposit: Web3.utils.toBN('0')
         },
         signer: partyD,
-        hubBond: {
-          tokenDeposit: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
-        }
+        hubTokenBond: Web3.utils.toBN(Web3.utils.toWei('1', 'ether'))
       }
       const sigA = await client.createChannelStateUpdate(sigParams)
       const sigI = await client.fastCloseThreadHandler({

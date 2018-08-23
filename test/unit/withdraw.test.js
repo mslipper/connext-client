@@ -25,7 +25,7 @@ let partyB
 let partyC
 let partyD
 
-describe('closeChannel()', () => {
+describe('withdraw()', () => {
   before('init client and accounts', async () => {
     accounts = await web3.eth.getAccounts()
     ingridAddress = accounts[0]
@@ -61,23 +61,23 @@ describe('closeChannel()', () => {
       )
     })
 
-    it('should closeChannel from the ETH/TOKEN channel', async () => {
-      const response = await client.closeChannel(partyA)
+    it('should withdraw from the ETH/TOKEN channel', async () => {
+      const response = await client.withdraw(partyA)
       expect(response).to.equal('transactionHash')
     })
 
-    it('should closeChannel from the ETH/TOKEN recipient channel', async () => {
-      const response = await client.closeChannel(partyB)
+    it('should withdraw from the ETH/TOKEN recipient channel', async () => {
+      const response = await client.withdraw(partyB)
       expect(response).to.equal('transactionHash')
     })
 
-    it('should closeChannel from the ETH channel', async () => {
-      const response = await client.closeChannel(partyC)
+    it('should withdraw from the ETH channel', async () => {
+      const response = await client.withdraw(partyC)
       expect(response).to.equal('transactionHash')
     })
 
-    it('should closeChannel from the TOKEN channel', async () => {
-      const response = await client.closeChannel(partyD)
+    it('should withdraw from the TOKEN channel', async () => {
+      const response = await client.withdraw(partyD)
       expect(response).to.equal('transactionHash')
     })
 
@@ -90,7 +90,7 @@ describe('closeChannel()', () => {
   describe('parameter validation', () => {
     it('should fail if an invalid sender is provided', async () => {
       try {
-        await client.closeChannel('fail')
+        await client.withdraw('fail')
       } catch (e) {
         expect(e.statusCode).to.equal(200)
       }

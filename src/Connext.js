@@ -33,8 +33,8 @@ const META_TYPES = {
 }
 
 const PAYMENT_TYPES = {
-  'LEDGER': 0,
-  'VIRTUAL': 1
+  'CHANNEL': 0,
+  'THREAD': 1
 }
 
 const CHANNEL_TYPES = {
@@ -58,7 +58,7 @@ validate.validators.isPositiveBnString = value => {
       return `${value} cannot be converted to BN`
     }
   }
-  
+
   if (bnVal.isNeg()) {
     return `${value} cannot be negative`
   } else {
@@ -79,14 +79,12 @@ validate.validators.isValidDepositObject = value => {
     return `${value} does not contain tokenDeposit or ethDeposit fields`
   }
   if (value.tokenDeposit && !validateBalance(value.tokenDeposit)) {
-    return `${value.tokenDeposit} is not a valid token deposit`
+    return `${value.tokenDeposit} is not a valid deposit`
+  } else if (value.ethDeposit && !validateBalance(value.ethDeposit)) {
+    return `${value.ethDeposit} is not a valid deposit`
+  } else {
+    return null
   }
-  
-  if (value.ethDeposit && !validateBalance(value.ethDeposit)) {
-    return `${value.ethDeposit} is not a valid eth deposit`
-  }
-
-  return null
 }
 
 validate.validators.isValidMeta = value => {
@@ -111,7 +109,7 @@ validate.validators.isValidMeta = value => {
       isValid = validatePurchasePurchaseMeta(value)
       ans = isValid ? null : `${JSON.stringify(value)} is not a valid PURCHASE purchase meta, missing one or more fields: productSku, productName`
       return ans
-    case 2: // UNCATEGORIZED -- no validation 
+    case 2: // UNCATEGORIZED -- no validation
       return null
     default:
       return `${value.type} is not a valid purchase meta type`
@@ -219,7 +217,7 @@ validate.validators.isThreadState = value => {
     }
   } else {
     return `Thread state does not contain valid balances: ${JSON.stringify(value)}`
-  } 
+  }
 
   return null
 }
@@ -317,17 +315,17 @@ class Connext {
   // ***************************************
 
   /**
-   * Opens a ledger channel with Ingrid (Hub) at the address provided when instantiating the Connext instance with the given initial deposit.
+   * Opens a channel with the Hub at the address provided when instantiating the Connext instance with the given initial deposit.
    *
    * Sender defaults to accounts[0] if not supplied to the openChannel function.
    *
-   * Ledger channel challenge timer is determined by Ingrid (Hub) if the parameter is not supplied. Current default value is 3600s (1 hour).
+   * channel challenge timer is determined by the Hub if the parameter is not supplied. Current default value is 3600s (1 hour).
    *
    * Uses the internal web3 instance to call the createChannel function on the Channel Manager contract, and logs the transaction hash of the channel creation. The function returns the ID of the created channel.
    *
-   * Once the channel is created on chain, users should call the requestJoinLc function to request that the hub joins the channel. This function should be called on a timeout sufficient for the hub to detect the channel and add it to its database.
+   * Once the channel is created on chain, users should call the requestJoinChannel function to request that the hub joins the channel. This function should be called on a timeout sufficient for the hub to detect the channel and add it to its database.
    *
-   * If Ingrid is unresponsive, or does not join the channel within the challenge period, the client function "ChannelOpenTimeoutContractHandler" can be called by the client to recover the funds.
+   * If the Hub is unresponsive, or does not join the channel within the challenge period, the client function "ChannelOpenTimeoutContractHandler" can be called by the client to recover the funds.
    *
    * @example
    * const deposit = Web3.utils.toBN(Web3.utils.toWei('1', 'ether))
@@ -336,9 +334,9 @@ class Connext {
    * @param {Object} initialDeposits - deposits in wei (must have at least one deposit)
    * @param {BN} initialDeposits.ethDeposit - deposit in eth (may be null)
    * @param {BN} initialDeposits.tokenDeposit - deposit in tokens (may be null)
-   * @param {String} sender - (optional) counterparty with hub in ledger channel, defaults to accounts[0]
+   * @param {String} sender - (optional) counterparty with hub in channel, defaults to accounts[0]
    * @param {Number} challenge - (optional) challenge period in seconds
-   * @returns {Promise} resolves to the ledger channel id of the created channel
+   * @returns {Promise} resolves to the channel id of the created channel
    */
   async openChannel (initialDeposits, tokenAddress = null, sender = null, challenge = null) {
     // validate params
@@ -377,7 +375,7 @@ class Connext {
         'isPositiveInt'
       )
     } else {
-      // get challenge timer from ingrid
+      // get challenge timer from hub
       challenge = await this.getChallengeTimer()
 
     }
@@ -394,7 +392,7 @@ class Connext {
     } else {
       throw new ChannelOpenError(methodName, `Error determining channel deposit types.`)
     }
-    // verify channel does not exist between ingrid and sender
+    // verify channel does not exist between hub and sender
     let channel = await this.getChannelByPartyA(sender)
     if (channel != null && CHANNEL_STATES[channel.state] === 1) {
       throw new ChannelOpenError(
@@ -409,7 +407,7 @@ class Connext {
       throw new ChannelOpenError(methodName, 'Cannot open a channel with yourself')
     }
 
-    // generate additional initial lc params
+    // generate additional initial channel params
     const channelId = Connext.getNewChannelId()
 
     const contractResult = await this.createChannelContractHandler ({
@@ -426,7 +424,7 @@ class Connext {
   }
 
   /**
-   * Adds a deposit to an existing ledger channel by calling the contract function "deposit" using the internal web3 instance.
+   * Adds a deposit to an existing channel by calling the contract function "deposit" using the internal web3 instance.
    *
    * Can be used by any either channel party.
    *
@@ -441,8 +439,8 @@ class Connext {
    * @param {Object} deposits - deposit object
    * @param {BN} deposits.ethDeposit - value of the channel deposit in ETH
    * @param {BN} deposits.tokenDeposit - value of the channel deposit in tokens
-   * @param {String} sender - (optional) ETH address sending funds to the ledger channel
-   * @param {String} recipient - (optional) ETH address recieving funds in their ledger channel
+   * @param {String} sender - (optional) ETH address sending funds to the channel
+   * @param {String} recipient - (optional) ETH address recieving funds in their channel
    * @param {String} tokenAddress - (optional, for testing) contract address of channel tokens
    * @returns {Promise} resolves to the transaction hash of the onchain deposit.
    */
@@ -490,65 +488,24 @@ class Connext {
     }
 
     // call contract handler
-    const contractResult = await this.depositContractHandler({
+    const result = await this.depositContractHandler({
       channelId: channel.channelId,
       deposits,
       recipient,
       sender,
       tokenAddress
     })
-
-    let sig
-    // post new sig
-    const newEthBalanceA = deposits.ethDeposit 
-      ? Web3.utils.toBN(channel.ethBalanceA).add(deposits.ethDeposit) 
-      : Web3.utils.toBN(channel.ethBalanceA)
-    const newTokenBalanceA = deposits.tokenDeposit
-      ? Web3.utils.toBN(channel.tokenBalanceA).add(deposits.tokenDeposit)
-      : Web3.utils.toBN(channel.tokenBalanceA)
-
-    if (contractResult) {
-      // generate signed update and post to hub
-      sig = await this.createChannelStateUpdate({
-        channelId: channel.channelId,
-        nonce: channel.nonce + 1,
-        openVcs: channel.openVcs,
-        vcRootHash: channel.vcRootHash,
-        partyA: channel.partyA,
-        partyI: channel.partyI,
-        balanceA: {
-          ethDeposit: newEthBalanceA,
-          tokenDeposit: newTokenBalanceA
-        },
-        balanceI: {
-          ethDeposit: Web3.utils.toBN(channel.ethBalanceI),
-          tokenDeposit: Web3.utils.toBN(channel.tokenBalanceI)
-        },
-        deposit: deposits
-      })
-     } else {
-       throw new ChannelUpdateError(methodName, 'Error with contract transaction')
-     }
-
-     const result = await this.networking.post(`ledgerchannel/${channel.channelId}/deposit`, {
-       sig: sig,
-       deposit: deposits.ethDeposit ? deposits.ethDeposit.toString() : deposits.tokenDeposit.toString(),
-       isToken: deposits.ethDeposit ? false : true
-      //  ethDeposit: deposits.ethDeposit ? deposits.ethDeposit.toString() : '0',
-      //  tokenDeposit: deposits.tokenDeposit ? deposits.tokenDeposit.toString() : '0',
-     })
-
-    return result.data
+    return result
   }
 
   /**
-   * Opens a virtual channel between "to" and sender with Ingrid as the hub. Both users must have a ledger channel open with ingrid.
+   * Opens a thread between "to" and sender with via the hub. Both users must have a channel open with the hub.
    *
-   * If there is no deposit provided, then 100% of the ledger channel balance is added to virtual channel deposit. This function is to be called by the "A" party in a unidirectional scheme.
+   * If there is no deposit provided, then 100% of the channel balance is added to thread deposit. This function is to be called by the "A" party in a unidirectional scheme.
    *
-   * Signs a copy of the initial virtual channel state, and generates a proposed ledger channel update to the hub for countersigning that updates the number of open virtual channels and the root hash of the ledger channel state.
+   * Signs a copy of the initial thread state, and generates a proposed channel update to the hub for countersigning that updates the number of open threads and the root hash of the channel state.
    *
-   * This proposed state update serves as the opening certificate for the virtual channel, and is used to verify Ingrid agreed to facilitate the creation of the virtual channel and take on the counterparty risk.
+   * This proposed state update serves as the opening certificate for the thread, and is used to verify that the hub agreed to facilitate the creation of the thread and take on the counterparty risk.
    *
    *
    * @example
@@ -556,10 +513,10 @@ class Connext {
    * await connext.openThread({ to: myFriendsAddress })
    *
    * @param {Object} params - the method object
-   * @param {String} params.to - ETH address you want to open a virtual channel with
-   * @param {BN} params.deposit - (optional) deposit in wei for the virtual channel, defaults to the entire LC balance
-   * @param {String} params.sender - (optional) who is initiating the virtual channel creation, defaults to accounts[0]
-   * @returns {Promise} resolves to the virtual channel ID recieved by Ingrid
+   * @param {String} params.to - ETH address you want to open a thread with
+   * @param {BN} params.deposit - (optional) deposit in wei for the thread, defaults to the entire LC balance
+   * @param {String} params.sender - (optional) who is initiating the thread creation, defaults to accounts[0]
+   * @returns {Promise} resolves to the thread ID recieved by Ingrid
    */
 
   async openThread ({ to, deposit = null, sender = null }) {
@@ -612,7 +569,7 @@ class Connext {
       )
     }
 
-    // validate lcA has enough to deposit or set deposit
+    // validate channelA has enough to deposit or set deposit
     if (deposit === null) {
       // use entire subchanA balance
       deposit = {
@@ -633,13 +590,13 @@ class Connext {
       )
     }
 
-    // vc does not already exist
+    // thread does not already exist
     let channel = await this.getThreadByParties({ partyA: sender, partyB: to })
     if (channel) {
       throw new ThreadOpenError(
         methodName,
         451,
-        `Parties already have open virtual channel: ${channel.channelId}`
+        `Parties already have open thread: ${channel.channelId}`
       )
     }
 
@@ -656,7 +613,7 @@ class Connext {
       throw new ThreadOpenError(methodName, `Error determining channel deposit types.`)
     }
 
-    // generate initial vcstate
+    // generate initial threadstate
     const channelId = Connext.getNewChannelId()
     const threadInitialState = {
       channelId,
@@ -678,19 +635,15 @@ class Connext {
       signer: sender
     })
 
-    // ingrid should add vc params to db
+    // hub should add thread params to db
     let response
     try {
       response = await this.networking.post(`virtualchannel/`, {
         channelId,
         partyA: sender.toLowerCase(),
         partyB: to.toLowerCase(),
-        ethBalance: deposit.ethDeposit 
-          ? deposit.ethDeposit.toString() 
-          : '0',
-        tokenBalance: deposit.tokenDeposit 
-          ? deposit.tokenDeposit.toString() 
-          : '0',
+        ethBalanceA: deposit.ethDeposit.toString(),
+        tokenBalanceA: deposit.tokenDeposit.toString(),
         vcSig: sigVC0,
         lcSig: sigAtoI
       })
@@ -701,16 +654,16 @@ class Connext {
   }
 
   /**
-   * Joins virtual channel with provided channelId with a deposit of 0 (unidirectional channels).
+   * Joins thread with provided channelId with a deposit of 0 (unidirectional channels).
    *
    * This function is to be called by the "B" party in a unidirectional scheme.
    *
    * @example
-   * const channelId = 10 // pushed to partyB from Ingrid
+   * const channelId = 10 // pushed to partyB from the hub
    * await connext.joinThread(channelId)
-   * @param {String} channelId - ID of the virtual channel
-   * @param {String} sender - (optional) ETH address of the person joining the virtual channel (partyB)
-   * @returns {Promise} resolves to the virtual channel ID
+   * @param {String} channelId - ID of the thread
+   * @param {String} sender - (optional) ETH address of the person joining the thread (partyB)
+   * @returns {Promise} resolves to the thread ID
    */
   async joinThread (threadId, sender = null) {
     // validate params
@@ -762,22 +715,22 @@ class Connext {
     const thread0 = {
       channelId,
       nonce: 0,
-      partyA: thread.partyA, // depending on ingrid for this value
+      partyA: thread.partyA, // depending on the hub for this value
       partyB: sender,
-      ethBalanceA: Web3.utils.toBN(thread.ethBalanceA), // depending on ingrid for this value
+      ethBalanceA: Web3.utils.toBN(thread.ethBalanceA), // depending on the hub for this value
       ethBalanceB: Web3.utils.toBN(0),
       tokenBalanceA: Web3.utils.toBN(thread.tokenBalanceA),
       tokenBalanceB: Web3.utils.toBN(0),
       signer: sender
     }
     const threadSig = await this.createThreadStateUpdate(thread0)
-    // generate lcSig
+    // generate channelSig
     const subchanSig = await this.createChannelUpdateOnThreadOpen({
       threadInitialState: thread0,
       channel: subchanB,
       signer: sender
     })
-    // ping ingrid with vc0 (hub decomposes to lc)
+    // ping the hub with thread0 (hub decomposes to channel)
     const result = await this.joinThreadHandler({
       threadSig,
       subchanSig,
@@ -788,7 +741,7 @@ class Connext {
 
   /**
    * Send multiple balance updates simultaneously from a single account.
-   * 
+   *
    * @param {Object[]} payments - payments object
    * @param {String} sender - (optional) defaults to accounts[0]
    */
@@ -806,14 +759,14 @@ class Connext {
       // generate payment
       let updatedPayment
       switch(PAYMENT_TYPES[payment.type]) {
-        case PAYMENT_TYPES.LEDGER: // channel update
-          updatedPayment = await this.channelUpdateHandler(payment, sender)
+        case PAYMENT_TYPES.CHANNEL: // channel update
+          updatedPayment = await this.channelUpdateHandler(payment, index + 1, sender)
           break
-        case PAYMENT_TYPES.VIRTUAL: // thread update
-          updatedPayment = await this.threadUpdateHandler(payment, sender)
+        case PAYMENT_TYPES.THREAD: // thread update
+          updatedPayment = await this.threadUpdateHandler(payment, index + 1, sender)
           break
         default:
-          throw new ChannelUpdateError(methodName, `Incorrect channel type specified. Must be CHANNEL or THREAD. Type: ${payment.type}`)
+          throw new ChannelUpdateError(methodName, 'Incorrect channel type specified. Must be CHANNEL or THREAD.')
       }
       updatedPayment.type = payment.type
       return updatedPayment
@@ -828,13 +781,14 @@ class Connext {
     return response.data
   }
 
-  async channelUpdateHandler ({ payment, meta }, sender = null) {
+  async channelUpdateHandler ({ payment, meta }, increment, sender = null) {
     const methodName = 'channelUpdateHandler'
     const isAddress= { presence: true, isAddress: true }
     const isHexStrict = { presence: true, isHexStrict: true }
     const isValidDepositObject = { presence: true, isValidDepositObject: true }
     const isValidMeta = { presence: true, isValidMeta: true }
     const isObj = { presence: true, isObj: true }
+    const isPositiveInt = { presence: true, isPositiveInt: true }
 
     if (!sender) {
       const accounts = await this.web3.eth.getAccounts()
@@ -864,6 +818,11 @@ class Connext {
       validate.single(meta, isValidMeta),
       methodName,
       'meta'
+    )
+    Connext.validatorsResponseToError(
+      validate.single(increment, isPositiveInt),
+      methodName,
+      'increment'
     )
     const channel = await this.getChannelById(channelId)
     // must exist
@@ -899,14 +858,14 @@ class Connext {
         }
         proposedEthBalance = Web3.utils.toBN(balanceA.ethDeposit).add(balanceB.ethDeposit) // proposed balance
         break
-      
+
       case CHANNEL_TYPES.TOKEN:
         if (balanceB.tokenDeposit.lte(Web3.utils.toBN(channel.tokenBalanceI))) {
           throw new ChannelUpdateError(methodName, 'Channel updates can only increase hub balance')
         }
         proposedTokenBalance = Web3.utils.toBN(balanceA.tokenDeposit).add(balanceB.tokenDeposit)
         break
-      
+
       case CHANNEL_TYPES.TOKEN_ETH:
         if (balanceB.ethDeposit.lte(Web3.utils.toBN(channel.ethBalanceI))) {
           throw new ChannelUpdateError(methodName, 'Channel updates can only increase hub ETH balance')
@@ -932,7 +891,7 @@ class Connext {
     // generate signature
     const sig = await this.createChannelStateUpdate({
       channelId,
-      nonce: channel.nonce + 1,
+      nonce: channel.nonce + increment,
       openVcs: channel.openVcs,
       vcRootHash: channel.vcRootHash,
       partyA: channel.partyA,
@@ -943,14 +902,12 @@ class Connext {
     })
     // return sig
     const state = {
-      // balanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : Web3.utils.toBN(channel.ethBalanceA).toString(),
-      // balanceB: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(channel.ethBalanceI).toString(),
       ethBalanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : Web3.utils.toBN(channel.ethBalanceA).toString(),
-      ethBalanceB: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(channel.ethBalanceI).toString(),
+      ethBalanceI: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(channel.ethBalanceI).toString(),
       tokenBalanceA: proposedTokenBalance ? balanceA.tokenDeposit.toString() : Web3.utils.toBN(channel.tokenBalanceA).toString(),
-      tokenBalanceB: proposedTokenBalance ? balanceB.tokenDeposit.toString() : Web3.utils.toBN(channel.tokenBalanceI).toString(),
-      channelId: channelId,
-      nonce: channel.nonce + 1,
+      tokenBalanceI: proposedTokenBalance ? balanceB.tokenDeposit.toString() : Web3.utils.toBN(channel.tokenBalanceI).toString(),
+      channelId,
+      nonce: channel.nonce + increment,
       sig,
     }
     return { payment: state, meta }
@@ -958,12 +915,13 @@ class Connext {
 
   // handle thread state updates from updateBalances
   // payment object contains fields balanceA and balanceB
-  async threadUpdateHandler ({ payment, meta }, sender = null) {
+  async threadUpdateHandler ({ payment, meta }, increment, sender = null) {
     // validate params
     const methodName = 'threadUpdateHandler'
     const isHexStrict = { presence: true, isHexStrict: true }
     const isValidDepositObject = { presence: true, isValidDepositObject: true }
     const isValidMeta = { presence: true, isValidMeta: true }
+    const isPositiveInt = { presence: true, isPositiveInt: true }
     const isObj = { presence: true, isObj: true }
     const isAddress = { presence: true, isAddress: true }
 
@@ -995,7 +953,12 @@ class Connext {
       methodName,
       'meta'
     )
-    // get the vc
+    Connext.validatorsResponseToError(
+      validate.single(increment, isPositiveInt),
+      methodName,
+      'increment'
+    )
+    // get the thread
     const thread = await this.getThreadById(channelId)
     // must exist
     if (!thread) {
@@ -1030,14 +993,14 @@ class Connext {
         }
         proposedEthBalance = Web3.utils.toBN(balanceA.ethDeposit).add(balanceB.ethDeposit) // proposed balance
         break
-      
+
       case CHANNEL_TYPES.TOKEN:
         if (balanceB.tokenDeposit.lte(Web3.utils.toBN(thread.tokenBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB token balance')
         }
         proposedTokenBalance = Web3.utils.toBN(balanceA.tokenDeposit).add(balanceB.tokenDeposit)
         break
-      
+
       case CHANNEL_TYPES.TOKEN_ETH:
         if (balanceB.ethDeposit.lte(Web3.utils.toBN(thread.ethBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB ETH balance')
@@ -1063,7 +1026,7 @@ class Connext {
     // generate new state update
     const sig = await this.createThreadStateUpdate({
       channelId,
-      nonce: thread.nonce + 1,
+      nonce: thread.nonce + increment,
       partyA: thread.partyA,
       partyB: thread.partyB,
       balanceA: balanceA,
@@ -1073,42 +1036,39 @@ class Connext {
     })
     // return sig
     const state = {
-      // balanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceA).toString(),
-      // balanceB: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceB).toString(),
       ethBalanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceA).toString(),
       ethBalanceB: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceB).toString(),
       tokenBalanceA: proposedTokenBalance ? balanceA.tokenDeposit.toString() : Web3.utils.toBN(thread.tokenBalanceA).toString(),
       tokenBalanceB: proposedTokenBalance ? balanceB.tokenDeposit.toString() : Web3.utils.toBN(thread.tokenBalanceB).toString(),
-      // channelId,
-      channelId: channelId,
-      nonce: thread.nonce + 1,
+      channelId,
+      nonce: thread.nonce + increment,
       sig,
     }
     return { payment: state, meta }
   }
 
   /**
-   * Closes a virtual channel.
+   * Closes a thread.
    *
-   * Retrieves the latest virtual state update, and decomposes the virtual channel into their respective ledger channel updates.
+   * Retrieves the latest virtual state update, and decomposes the thread into their respective channel updates.
    *
-   * The virtual channel agent who called this function signs the closing ledger-channel update, and forwards the signature to Ingrid.
+   * The thread agent who called this function signs the closing channel update, and forwards the signature to the hub.
    *
-   * Ingrid verifies the signature, returns her signature of the proposed virtual channel decomposition, and proposes the LC update for the other virtual channel participant.
+   * The hub verifies the signature, returns its signature of the proposed thread decomposition, and proposes the channel update for the other thread participant.
    *
-   * If Ingrid does not return her signature on the proposed virtual channel decomposition, the caller goes to chain by calling initVC and settleVC.
+   * If the hub does not return its signature on the proposed thread decomposition, the caller goes to chain by calling initThread and settleThread.
    *
    * @example
-   * await connext.closeThread({
+   * await connext.closeChannel({
    *   channelId: 0xadsf11..,
    *   balance: web3.utils.toBN(web3.utils.toWei(0.5, 'ether'))
    * })
-   * @param {Number} channelId - ID of the virtual channel to close
+   * @param {Number} channelId - ID of the thread to close
    * @returns {Promise} resolves to the signature of the hub on the generated update if accepted, or the result of closing the channel on chain if there is a dispute
    */
-  async closeThread (threadId, sender = null) {
+  async closeChannel (threadId, sender = null) {
     // validate params
-    const methodName = 'closeThread'
+    const methodName = 'closeChannel'
     const isHexStrict = { presence: true, isHexStrict: true }
     const isAddress = { presence: true, isAddress: true }
     Connext.validatorsResponseToError(
@@ -1127,7 +1087,7 @@ class Connext {
       sender = accounts[0].toLowerCase()
     }
 
-    // get latest state in vc
+    // get latest state in thread
     const thread = await this.getThreadById(threadId)
     if (!thread) {
       throw new ThreadCloseError(methodName, 'Thread not found')
@@ -1159,16 +1119,16 @@ class Connext {
     latestThreadState.channelId = threadId
     latestThreadState.partyA = thread.partyA
     latestThreadState.partyB = thread.partyB
-    // get partyA ledger channel
+    // get partyA channel
     const subchan = await this.getChannelByPartyA(sender)
-    // generate decomposed lc update
+    // generate decomposed channel update
     const sigAtoI = await this.createChannelUpdateOnThreadClose({
       latestThreadState,
       subchan,
       signer: sender.toLowerCase()
     })
 
-    // request ingrid closes vc with this update
+    // request the hub closes thread with this update
     const fastCloseSig = await this.fastCloseThreadHandler({
       sig: sigAtoI,
       signer: sender.toLowerCase(),
@@ -1182,23 +1142,23 @@ class Connext {
         'Hub did not cosign proposed channel update, call initThread and settleThread'
       )
     }
-    // ingrid cosigned update
+    // hub cosigned update
     return fastCloseSig
   }
 
   /**
-   * Closes many virtual channels by calling closeThread on each channel ID in the provided array.
+   * Closes many threads by calling closeChannel on each channel ID in the provided array.
    *
    * @example
    * const channels = [
    *     0xasd310..,
    *     0xadsf11..,
    * ]
-   * await connext.closeThreads(channels)
-   * @param {String[]} channelIds - array of virtual channel IDs you wish to close
+   * await connext.closeChannels(channels)
+   * @param {String[]} channelIds - array of thread IDs you wish to close
    */
-  async closeThreads (channelIds, sender = null) {
-    const methodName = 'closeThreads'
+  async closeChannels (channelIds, sender = null) {
+    const methodName = 'closeChannels'
     const isArray = { presence: true, isArray: true }
     const isAddress = { presence: true, isAddress: true }
     Connext.validatorsResponseToError(
@@ -1213,43 +1173,33 @@ class Connext {
     Connext.validatorsResponseToError(validate.single(sender, isAddress), methodName, 'sender')
     // should this try to fast close any of the channels?
     // or just immediately force close in dispute many channels
-    let fnMap = new Map()
-    channelIds.map(channelId => 
-      fnMap.set([channelId, sender], this.closeThread)
-    )
-    let results = []
-    for (const [parameters, fn] of fnMap.entries()) {
-      try {
-        console.log(`Closing channel: ${parameters[0]}...`)
-        const result = await fn.apply(this, parameters)
-        results.push(result)
-        console.log(`Channel closed.`)
-      } catch (e) {
-        console.log(`Error closing channel.`)
-        results.push(new ThreadCloseError(methodName, e.message))
-      }
-    }
+    const results = await Promise.all(channelIds.map( channelId => {
+      console.log('Closing channel:', channelId)
+      const response = this.closeChannel(channelId, sender)
+      console.log('Channel closed.')
+      return response
+    }))
     return results
   }
 
   /**
-   * Withdraws bonded funds from an existing ledger channel.
+   * Withdraws bonded funds from an existing channel.
    *
-   * All virtual channels must be closed before a ledger channel can be closed.
+   * All threads must be closed before a channel can be closed.
    *
-   * Generates the state update from the latest ingrid signed state with fast-close flag.
+   * Generates the state update from the latest hub signed state with fast-close flag.
    *
-   * Ingrid should countersign the closing update if it matches what she has signed previously, and the channel will fast close by calling consensuscloseThread on the contract.
+   * The Hub should countersign the closing update if it matches what she has signed previously, and the channel will fast close by calling consensusCloseChannel on the contract.
    *
-   * If the state update doesn't match what Ingrid previously signed, then updateLCState is called with the latest state and a challenge flag.
+   * If the state update doesn't match what the hub previously signed, then updateChannelState is called with the latest state and a challenge flag.
    *
    * @example
-   * const success = await connext.closeChannel()
+   * const success = await connext.withdraw()
    * @param {String} - (optional) who the transactions should be sent from, defaults to account[0]
    * @returns {Promise} resolves to an object with the structure: { response: transactionHash, fastClosed: true}
    */
-  async closeChannel (sender = null) {
-    const methodName = 'closeChannel'
+  async withdraw (sender = null) {
+    const methodName = 'withdraw'
     const isAddress = { presence: true, isAddress: true }
     if (sender) {
       Connext.validatorsResponseToError(
@@ -1274,10 +1224,10 @@ class Connext {
       throw new ChannelCloseError(methodName, 'Not your channel')
     }
 
-    // get latest i-signed lc state update
+    // get latest i-signed channel state update
     let channelState = await this.getLatestChannelState(channel.channelId, ['sigI'])
     if (channelState) {
-      // openVcs?
+      // openThreads?
       if (Number(channelState.openVcs) !== 0) {
         throw new ChannelCloseError(methodName, 'Cannot close channel with open VCs')
       }
@@ -1304,8 +1254,8 @@ class Connext {
         throw new ChannelCloseError(methodName, 'Hub did not sign update')
       }
     } else {
-      // no state updates made in LC
-      // PROBLEM: ingrid doesnt return lcState, just uses empty
+      // no state updates made in Channel
+      // PROBLEM: hub doesnt return channelState, just uses empty
       channelState = {
         isClose: false,
         channelId: channel.channelId,
@@ -1341,10 +1291,7 @@ class Connext {
       signer: sender
     }
     const sig = await this.createChannelStateUpdate(sigParams)
-    const finalState = await this.fastCloseChannelHandler({ 
-      sig, 
-      channelId: channel.channelId 
-    })
+    const finalState = await this.fastCloseChannelHandler({ sig, channelId: channel.channelId })
     if (!finalState.sigI) {
       throw new ChannelCloseError(
         methodName,
@@ -1377,23 +1324,23 @@ class Connext {
   // ***************************************
 
   /**
-   * closeChannel bonded funds from ledger channel after a channel is challenge-closed and the challenge period expires by calling withdraw using the internal web3 instance.
+   * Withdraw bonded funds from channel after a channel is challenge-closed and the challenge period expires by calling withdrawFinal using the internal web3 instance.
    *
-   * Looks up LC by the account address of the client-side user if sender parameter is not supplied.
+   * Looks up Channel by the account address of the client-side user if sender parameter is not supplied.
    *
-   * Calls the "byzantinecloseThread" function on the contract.
+   * Calls the "byzantineCloseChannel" function on the contract.
    *
    * @example
-   * const success = await connext.closeChannel()
+   * const success = await connext.withdraw()
    * if (!success) {
    *   // wait out challenge timer
-   *   await connext.withdraw()
+   *   await connext.withdrawFinal()
    * }
    * @param {String} sender - (optional) the person sending the on chain transaction, defaults to accounts[0]
-   * @returns {Promise} resolves to the transaction hash from calling byzantinecloseThread
+   * @returns {Promise} resolves to the transaction hash from calling byzantineCloseChannel
    */
-  async withdraw (sender = null) {
-    const methodName = 'withdraw'
+  async withdrawFinal (sender = null) {
+    const methodName = 'withdrawFinal'
     const isAddress = { presence: true, isAddress: true }
     if (sender) {
       Connext.validatorsResponseToError(
@@ -1406,7 +1353,7 @@ class Connext {
       sender = accounts[0].toLowerCase()
     }
     const lc = await this.getChannelByPartyA(sender)
-    const results = await this.byzantineCloseThreadContractHandler({
+    const results = await this.byzantineCloseChannelContractHandler({
       lcId: lc.channelId,
       sender: sender
     })
@@ -1420,9 +1367,9 @@ class Connext {
    * const lcId = await connext.getChannelIdByPartyA() // get ID by accounts[0] and open status by default
    * await connext.cosignLatestChannelUpdate(channelId)
    *
-   * @param {String} lcId - ledger channel id
+   * @param {String} lcId - channel id
    * @param {String} sender - (optional) the person who cosigning the update, defaults to accounts[0]
-   * @returns {Promise} resolves to the cosigned ledger channel state update
+   * @returns {Promise} resolves to the cosigned channel state update
    */
   async cosignLatestChannelUpdate (channelId, sender = null) {
     const methodName = 'cosignLatestChannelUpdate'
@@ -1470,9 +1417,9 @@ class Connext {
    * await connext.cosignLatestChannelUpdate(lcId)
    *
    * @param {Object} params - the method object
-   * @param {String} params.lcId - ledger channel id
+   * @param {String} params.lcId - channel id
    * @param {String} params.sender - (optional) the person who cosigning the update, defaults to accounts[0]
-   * @returns {Promise} resolves to the cosigned ledger channel state update
+   * @returns {Promise} resolves to the cosigned channel state update
    */
   async cosignChannelUpdate ({ channelId, nonce, sender = null }) {
     const methodName = 'cosignChannelUpdate'
@@ -1562,15 +1509,15 @@ class Connext {
   }
 
   /**
-   * Hashes the ledger channel state update information using soliditySha3.
+   * Hashes the channel state update information using soliditySha3.
    *
    * @param {Object} params - the method object
    * @param {Boolean} params.isClose - flag indicating whether or not this is closing state
-   * @param {Number} params.nonce - the sequence of the ledger channel update
-   * @param {Number} params.openVcs - the number of open virtual channels associated with this ledger channel
-   * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open virtual channels
+   * @param {Number} params.nonce - the sequence of the channel update
+   * @param {Number} params.openVcs - the number of open threads associated with this channel
+   * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open threads
    * @param {String} params.partyA - ETH address of partyA in the ledgerchannel
-   * @param {String} params.partyI - ETH address of the hub (Ingrid)
+   * @param {String} params.partyI - ETH address of the hub
    * @param {Number} params.balanceA - updated balance of partyA
    * @param {Number} params.balanceI - updated balance of partyI
    * @returns {String} the hash of the state data
@@ -1676,12 +1623,12 @@ class Connext {
    * @param {Object} params - the method object
    * @param {String} params.sig - the signature of the data from an unknown agent
    * @param {Boolean} params.isClose - flag indicating whether or not this is closing state
-   * @param {String} params.channelId - ID of the ledger channel you are creating a state update for
-   * @param {Number} params.nonce - the sequence of the ledger channel update
-   * @param {Number} params.openVcs - the number of open virtual channels associated with this ledger channel
-   * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open virtual channels
-   * @param {String} params.partyA - ETH address of partyA in the ledgerchannel
-   * @param {String} params.partyI - ETH address of the hub (Ingrid)
+   * @param {String} params.channelId - ID of the channel you are creating a state update for
+   * @param {Number} params.nonce - the sequence of the channel update
+   * @param {Number} params.openVcs - the number of open threads associated with this channel
+   * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open threads
+   * @param {String} params.partyA - ETH address of partyA in the channel
+   * @param {String} params.partyI - ETH address of the hub
    * @param {Number} params.balanceA - updated balance of partyA
    * @param {Number} params.balanceI - updated balance of partyI
    * @returns {String} the ETH address of the person who signed the data
@@ -1821,16 +1768,16 @@ class Connext {
   }
 
   /**
-   * Hashes data from a virtual channel state update using soliditySha3.
+   * Hashes data from a thread state update using soliditySha3.
    *
    * @param {Object} params - the method object
-   * @param {String} params.channelId - ID of the virtual channel you are creating a state update for
+   * @param {String} params.channelId - ID of the thread you are creating a state update for
    * @param {Number} params.nonce - the sequence of the state update
    * @param {String} params.partyA - ETH address of partyA
    * @param {String} params.partyB - ETH address of partyB
    * @param {Number} params.balanceA - updated balance of partyA
    * @param {Number} params.balanceB - updated balance of partyB
-   * @returns {String} hash of the virtual channel state data
+   * @returns {String} hash of the thread state data
    */
   static createThreadStateUpdateFingerprint ({
     channelId,
@@ -1919,7 +1866,7 @@ class Connext {
    *
    * @param {Object} params - the method object
    * @param {String} params.sig - signature of the data created in Connext.createThreadStateUpdate
-   * @param {String} params.channelId - ID of the virtual channel you are creating a state update for
+   * @param {String} params.channelId - ID of the thread you are creating a state update for
    * @param {Number} params.nonce - the sequence of the state update
    * @param {String} params.partyA - ETH address of partyA
    * @param {String} params.partyB - ETH address of partyB
@@ -2046,14 +1993,14 @@ class Connext {
   // ***************************************
 
   // /**
-  //  * Generates a signed ledger channel state update.
+  //  * Generates a signed channel state update.
   //  *
   //  * @param {Object} params - the method object
   //  * @param {Boolean} params.isClose - (optional) flag indicating whether or not this is closing state, defaults to false
-  //  * @param {String} params.channelId - ID of the ledger channel you are creating a state update for
-  //  * @param {Number} params.nonce - the sequence of the ledger channel update
-  //  * @param {Number} params.openVcs - the number of open virtual channels associated with this ledger channel
-  //  * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open virtual channels
+  //  * @param {String} params.channelId - ID of the channel you are creating a state update for
+  //  * @param {Number} params.nonce - the sequence of the channel update
+  //  * @param {Number} params.openVcs - the number of open threads associated with this channel
+  //  * @param {String} params.vcRootHash - the root hash of the Merkle tree containing all initial states of the open threads
   //  * @param {String} params.partyA - ETH address of partyA in the ledgerchannel
   //  * @param {String} params.partyI - (optional) ETH address of the hub, defaults to this.ingridAddress
   //  * @param {Number} params.balanceA - updated balance of partyA
@@ -2069,13 +2016,13 @@ class Connext {
     openVcs,
     vcRootHash,
     partyA,
-    partyI = this.ingridAddress, // default to ingrid
+    partyI = this.ingridAddress, // default to the hub
     balanceA,
     balanceI,
-    unlockedAccountPresent = process.env.DEV ? process.env.DEV : false, // true if hub or ingrid, dev needs unsigned
+    unlockedAccountPresent = process.env.DEV ? process.env.DEV : false, // true if hub, dev needs unsigned
     signer = null,
-    hubBond = null,
-    deposit = null
+    hubEthBond = null,
+    hubTokenBond = null,
   }) {
     const methodName = 'createChannelStateUpdate'
     // validate
@@ -2133,43 +2080,23 @@ class Connext {
       methodName,
       'balanceI'
     )
-    if (hubBond) {
+    if (hubEthBond) {
       Connext.validatorsResponseToError(
-        validate.single(hubBond, isValidDepositObject),
+        validate.single(hubEthBond, isBN),
         methodName,
-        'hubBond'
+        'hubEthBond'
       )
-      hubBond.tokenDeposit = hubBond.tokenDeposit 
-        ? hubBond.tokenDeposit 
-        : Web3.utils.toBN('0')
-      hubBond.ethDeposit = hubBond.ethDeposit 
-        ? hubBond.ethDeposit 
-        : Web3.utils.toBN('0')
     } else {
-      // set to zero
-      hubBond = {
-        ethDeposit: Web3.utils.toBN('0'),
-        tokenDeposit: Web3.utils.toBN('0'),
-      }
+      hubEthBond = Web3.utils.toBN('0')
     }
-
-    if (deposit) {
+    if (hubTokenBond) {
       Connext.validatorsResponseToError(
-        validate.single(deposit, isValidDepositObject),
+        validate.single(hubTokenBond, isBN),
         methodName,
-        'deposit'
+        'hubTokenBond'
       )
-      deposit.ethDeposit = deposit.ethDeposit 
-        ? deposit.ethDeposit 
-        : Web3.utils.toBN('0')
-      deposit.tokenDeposit = deposit.tokenDeposit 
-        ? deposit.tokenDeposit 
-        : Web3.utils.toBN('0')      
     } else {
-      deposit = {
-        ethDeposit: Web3.utils.toBN('0'),
-        tokenDeposit: Web3.utils.toBN('0')
-      }
+      hubTokenBond = Web3.utils.toBN('0')
     }
     if (signer) {
       Connext.validatorsResponseToError(
@@ -2256,28 +2183,11 @@ class Connext {
         proposedTokenBalance = balanceA.tokenDeposit.add(balanceI.tokenDeposit)
       }
       // no change in total balance
-      // add ledger channel balances of both parties from previously, subctract new balance of vc being opened
+      // add channel balances of both parties from previously, subtract new balance of thread being opened
       let isOpeningVc = openVcs - channel.openVcs === 1
       // verify updates dont change channel balance
-      let ethChannelBalance = isOpeningVc 
-      ? Web3.utils.toBN(channel.ethBalanceA)
-        .add(Web3.utils.toBN(channel.ethBalanceI))
-        .add(deposit.ethDeposit)
-        .sub(hubBond.ethDeposit) 
-      : Web3.utils.toBN(channel.ethBalanceA)
-        .add(Web3.utils.toBN(channel.ethBalanceI))
-        .add(deposit.ethDeposit)
-        .add(hubBond.ethDeposit)
-
-      let tokenChannelBalance = isOpeningVc 
-      ? Web3.utils.toBN(channel.tokenBalanceA)
-        .add(Web3.utils.toBN(channel.tokenBalanceI))
-        .add(deposit.tokenDeposit)
-        .sub(hubBond.tokenDeposit)
-      : Web3.utils.toBN(channel.tokenBalanceA)
-        .add(Web3.utils.toBN(channel.tokenBalanceI))
-        .add(deposit.tokenDeposit)
-        .add(hubBond.tokenDeposit)
+      const ethChannelBalance = isOpeningVc ? Web3.utils.toBN(channel.ethBalanceA).add(Web3.utils.toBN(channel.ethBalanceI)).sub(hubEthBond) : Web3.utils.toBN(channel.ethBalanceA).add(Web3.utils.toBN(channel.ethBalanceI)).add(hubEthBond)
+      const tokenChannelBalance = isOpeningVc ? Web3.utils.toBN(channel.tokenBalanceA).add(Web3.utils.toBN(channel.tokenBalanceI)).sub(hubTokenBond) : Web3.utils.toBN(channel.tokenBalanceA).add(Web3.utils.toBN(channel.tokenBalanceI)).add(hubTokenBond)
 
       if (proposedEthBalance && !proposedEthBalance.eq(ethChannelBalance)) {
         throw new ChannelUpdateError(methodName, 'Invalid ETH balance proposed')
@@ -2295,18 +2205,10 @@ class Connext {
       vcRootHash,
       partyA,
       partyI,
-      ethBalanceA: proposedEthBalance 
-        ? balanceA.ethDeposit.toString() 
-        : '0',
-      ethBalanceI: proposedEthBalance 
-        ? balanceI.ethDeposit.toString() 
-        : '0',
-      tokenBalanceA: proposedTokenBalance 
-        ? balanceA.tokenDeposit.toString() 
-        : '0',
-      tokenBalanceI: proposedTokenBalance 
-        ? balanceI.tokenDeposit.toString() 
-        : '0',
+      ethBalanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : '0',
+      ethBalanceI: proposedEthBalance ? balanceI.ethDeposit.toString() : '0',
+      tokenBalanceA: proposedTokenBalance ? balanceA.tokenDeposit.toString() : '0',
+      tokenBalanceI: proposedTokenBalance ? balanceI.tokenDeposit.toString() : '0',
     }))
     // generate sig
     const hash = Connext.createChannelStateUpdateFingerprint({
@@ -2333,10 +2235,10 @@ class Connext {
   }
 
   // /**
-  //  * Creates a signed virtual channel state update
+  //  * Creates a signed thread state update
   //  *
   //  * @param {Object} params - the method object
-  //  * @param {String} params.channelId - ID of the virtual channel you are creating a state update for
+  //  * @param {String} params.channelId - ID of the thread you are creating a state update for
   //  * @param {Number} params.nonce - the sequence of the state update
   //  * @param {String} params.partyA - ETH address of partyA
   //  * @param {String} params.partyB - ETH address of partyB
@@ -2402,6 +2304,11 @@ class Connext {
     let thread = await this.getThreadById(channelId)
     let proposedEthBalance, proposedTokenBalance
     if (thread === null) {
+      // set initial balances to 0 if thread does not exist
+      thread.ethBalanceA = '0'
+      thread.ethBalanceB = '0'
+      thread.tokenBalanceA = '0'
+      thread.tokenBalanceB = '0'
       // channel does not exist, generating opening state
       if (nonce !== 0) {
         throw new ThreadOpenError(methodName, 'Invalid nonce detected')
@@ -2419,7 +2326,7 @@ class Connext {
          if(Web3.utils.toBN(subchanA.ethBalanceA).lt(balanceA.ethDeposit)) {
           throw new ThreadOpenError(methodName, 'Insufficient ETH channel balance detected')
         }
-        proposedEthBalance = balanceA.ethDeposit        
+        proposedEthBalance = balanceA.ethDeposit
       }
       if (balanceA.tokenDeposit) {
         if (Web3.utils.toBN(subchanA.tokenBalanceA).lt(balanceA.tokenDeposit)) {
@@ -2452,14 +2359,14 @@ class Connext {
           }
           proposedEthBalance = Web3.utils.toBN(balanceA.ethDeposit).add(balanceB.ethDeposit) // proposed balance
           break
-        
+
         case CHANNEL_TYPES.TOKEN:
           if (balanceB.tokenDeposit.lt(Web3.utils.toBN(thread.tokenBalanceB))) {
             throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB token balance')
           }
           proposedTokenBalance = Web3.utils.toBN(balanceA.tokenDeposit).add(balanceB.tokenDeposit)
           break
-        
+
         case CHANNEL_TYPES.TOKEN_ETH:
           if (balanceB.ethDeposit.lt(Web3.utils.toBN(thread.ethBalanceB))) {
             throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB ETH balance')
@@ -2476,7 +2383,7 @@ class Connext {
       if (proposedEthBalance && !proposedEthBalance.eq(threadEthBalance)) {
         throw new ThreadUpdateError(methodName, 'Thread ETH balance cannot change')
       }
-  
+
       if (proposedTokenBalance && !proposedTokenBalance.eq(threadTokenBalance)) {
         throw new ThreadUpdateError(methodName, 'Thread token balance cannot change')
       }
@@ -2490,29 +2397,10 @@ class Connext {
       nonce,
       partyA,
       partyB,
-      // if balance change proposed, use balance
-      // else use thread balance if thread exists (will be null on open)
-      // else use 0
-      ethBalanceA: proposedEthBalance 
-        ? balanceA.ethDeposit 
-        : thread 
-        ? Web3.utils.toBN(thread.ethBalanceA) 
-        : Web3.utils.toBN('0'),
-      ethBalanceB: proposedEthBalance 
-        ? balanceB.ethDeposit 
-        : thread 
-        ? Web3.utils.toBN(thread.ethBalanceB) 
-        : Web3.utils.toBN('0'),
-      tokenBalanceA: proposedTokenBalance 
-        ? balanceA.tokenDeposit 
-        : thread 
-        ? Web3.utils.toBN(thread.tokenBalanceA) 
-        : Web3.utils.toBN('0'),
-      tokenBalanceB: proposedTokenBalance 
-        ? balanceB.tokenDeposit 
-        : thread 
-        ? Web3.utils.toBN(thread.tokenBalanceB) 
-        : Web3.utils.toBN('0'),
+      ethBalanceA: proposedEthBalance ? balanceA.ethDeposit : Web3.utils.toBN(thread.ethBalanceA),
+      ethBalanceB: proposedEthBalance ? balanceB.ethDeposit : Web3.utils.toBN(thread.ethBalanceB),
+      tokenBalanceA: proposedTokenBalance ? balanceA.tokenDeposit : Web3.utils.toBN(thread.tokenBalanceA),
+      tokenBalanceB: proposedTokenBalance ? balanceB.tokenDeposit : Web3.utils.toBN(thread.tokenBalanceB),
     }
     const hash = Connext.createThreadStateUpdateFingerprint(state)
     console.log('signing:', JSON.stringify({
@@ -2520,26 +2408,10 @@ class Connext {
       nonce,
       partyA,
       partyB,
-      ethBalanceA: proposedEthBalance 
-        ? balanceA.ethDeposit.toString() 
-        : thread 
-        ? Web3.utils.toBN(thread.ethBalanceA).toString() 
-        : Web3.utils.toBN('0').toString(),
-      ethBalanceB: proposedEthBalance 
-        ? balanceB.ethDeposit.toString() 
-        : thread 
-        ? Web3.utils.toBN(thread.ethBalanceB).toString() 
-        : Web3.utils.toBN('0').toString(),
-      tokenBalanceA: proposedTokenBalance 
-        ? balanceA.tokenDeposit.toString() 
-        : thread 
-        ? Web3.utils.toBN(thread.tokenBalanceA).toString() 
-        : Web3.utils.toBN('0').toString(),
-      tokenBalanceB: proposedTokenBalance 
-        ? balanceB.tokenDeposit.toString() 
-        : thread 
-        ? Web3.utils.toBN(thread.tokenBalanceB).toString() 
-        : Web3.utils.toBN('0').toString(),
+      ethBalanceA: proposedEthBalance ? balanceA.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceA).toString(),
+      ethBalanceB: proposedEthBalance ? balanceB.ethDeposit.toString() : Web3.utils.toBN(thread.ethBalanceB).toString(),
+      tokenBalanceA: proposedTokenBalance ? balanceA.tokenDeposit.toString() : Web3.utils.toBN(thread.tokenBalanceA).toString(),
+      tokenBalanceB: proposedTokenBalance ? balanceB.tokenDeposit.toString() : Web3.utils.toBN(thread.tokenBalanceB).toString(),
     }))
     let sig
     if (signer && unlockedAccountPresent) {
@@ -2555,7 +2427,7 @@ class Connext {
     return sig
   }
 
-  // vc0 is array of all existing vc0 sigs for open vcs
+  // thread0 is array of all existing thread0 sigs for open threads
   static generateThreadRootHash ({ threadInitialStates }) {
     const methodName = 'generateThreadRootHash'
     const isArray = { presence: true, isArray: true }
@@ -2568,7 +2440,7 @@ class Connext {
       '0x0000000000000000000000000000000000000000000000000000000000000000'
     let threadRootHash
     if (threadInitialStates.length === 0) {
-      // reset to initial value -- no open VCs
+      // reset to initial value -- no open threads
       threadRootHash = emptyRootHash
     } else {
       const merkle = Connext.generateMerkleTree(threadInitialStates)
@@ -2593,7 +2465,7 @@ class Connext {
       '0x0000000000000000000000000000000000000000000000000000000000000000'
     let merkle
     let elems = threadInitialStates.map(threadInitialState => {
-      // vc0 is the initial state of each vc
+      // thread0 is the initial state of each thread
       // hash each initial state and convert hash to buffer
       const hash = Connext.createThreadStateUpdateFingerprint(threadInitialState)
       const vcBuf = Utils.hexToBuffer(hash)
@@ -2655,7 +2527,7 @@ class Connext {
         methodName,
         'tokenAddress'
       )
-    } 
+    }
     if (sender) {
       Connext.validatorsResponseToError(
         validate.single(sender, isAddress),
@@ -2678,10 +2550,10 @@ class Connext {
         tokenAddress = '0x0'
         result = await this.channelManagerInstance.methods
           .createChannel(
-            channelId, 
-            ingridAddress, 
-            challenge, 
-            tokenAddress, 
+            channelId,
+            ingridAddress,
+            challenge,
+            tokenAddress,
             [initialDeposits.ethDeposit, Web3.utils.toBN('0')]
           )
           .send({
@@ -2700,10 +2572,10 @@ class Connext {
         if (tokenApproval) {
           result = await this.channelManagerInstance.methods
           .createChannel(
-            channelId, 
-            ingridAddress, 
-            challenge, 
-            tokenAddress, 
+            channelId,
+            ingridAddress,
+            challenge,
+            tokenAddress,
             [Web3.utils.toBN('0'), initialDeposits.tokenDeposit]
           )
           .send({
@@ -2723,10 +2595,10 @@ class Connext {
         if (tokenApproval) {
           result = await this.channelManagerInstance.methods
             .createChannel(
-              channelId, 
-              ingridAddress, 
-              challenge, 
-              tokenAddress, 
+              channelId,
+              ingridAddress,
+              challenge,
+              tokenAddress,
               [initialDeposits.ethDeposit, initialDeposits.tokenDeposit]
             )
             .send({
@@ -2763,9 +2635,9 @@ class Connext {
   }
 
   /**
-   * Watchers or users should call this to recover bonded funds if Ingrid fails to join the ledger channel within the challenge window.
+   * Watchers or users should call this to recover bonded funds if the hub fails to join the channel within the challenge window.
    *
-   * @param {String} lcId - ledger channel id the hub did not join
+   * @param {String} lcId - channel id the hub did not join
    * @param {String} sender - (optional) who is calling the transaction (defaults to accounts[0])
    * @returns {Promise} resolves to the result of sending the transaction
    */
@@ -2798,7 +2670,7 @@ class Connext {
     if (channel.partyA.toLowerCase() !== sender.toLowerCase()) {
       throw new ContractError(
         methodName,
-        'Caller must be partyA in ledger channel'
+        'Caller must be partyA in channel'
       )
     }
 
@@ -2889,7 +2761,7 @@ class Connext {
     ) {
       throw new ContractError(
         methodName,
-        'Recipient is not a member of the ledger channel'
+        'Recipient is not a member of the channel'
       )
     }
 
@@ -2915,7 +2787,7 @@ class Connext {
         .deposit(
           channelId, // PARAM NOT IN CONTRACT YET, SHOULD BE
           recipient,
-          deposits.ethDeposit,
+          [deposits.ethDeposit, 0],
           false
         )
         .send({
@@ -2925,19 +2797,47 @@ class Connext {
         })
         break
       case CHANNEL_TYPES.TOKEN:
-      // must pre-approve transfer
-        result = await this.channelManagerInstance.methods
-          .deposit(
-            channelId, // PARAM NOT IN CONTRACT YET, SHOULD BE
-            recipient,
-            deposits.tokenDeposit,
-            false
-          )
-          .send({
-            from: sender,
-            gas: 1000000,
-          })
-        
+        // approve transfer
+        token = new this.web3.eth.Contract(tokenAbi, tokenAddress)
+        tokenApproval = await token.methods.approve(this.ingridAddress, deposits.tokenDeposit).send({
+          from: sender,
+          gas: 750000
+        })
+        if (tokenApproval) {
+          result = await this.channelManagerInstance.methods
+            .deposit(
+              channelId, // PARAM NOT IN CONTRACT YET, SHOULD BE
+              recipient,
+              [0, deposits.tokenDeposit],
+              false
+            )
+            .send({
+              from: sender,
+              gas: 1000000,
+            })
+        }
+        break
+      case CHANNEL_TYPES.TOKEN_ETH:
+        // approve transfer
+        token = new this.web3.eth.Contract(tokenAbi, tokenAddress)
+        tokenApproval = await token.methods.approve(this.ingridAddress, deposits.tokenDeposit).send({
+          from: sender,
+          gas: 750000
+        })
+        if (tokenApproval) {
+          result = await this.channelManagerInstance.methods
+            .deposit(
+              channelId, // PARAM NOT IN CONTRACT YET, SHOULD BE
+              recipient,
+              [deposits.ethDeposit, deposits.tokenDeposit],
+              false
+            )
+            .send({
+              from: sender,
+              value: deposits.ethDeposit,
+              gas: 1000000,
+            })
+        }
         break
       default:
         throw new ChannelUpdateError(methodName, `Invalid deposit type detected`)
@@ -3029,10 +2929,10 @@ class Connext {
       vcRootHash: emptyRootHash,
       partyA: sender,
       partyI: this.ingridAddress,
-      ethBalanceA: balanceA.ethDeposit ? balanceA.ethDeposit :      Web3.utils.toBN('0'),
+      ethBalanceA: balanceA.ethDeposit ? balanceA.ethDeposit : Web3.utils.toBN('0'),
       ethBalanceI: balanceI.ethDeposit ? balanceI.ethDeposit : Web3.utils.toBN('0'),
       tokenBalanceA: balanceA.tokenDeposit ? balanceA.tokenDeposit : Web3.utils.toBN('0'),
-      tokenBalanceI: balanceI.tokenDeposit ? balanceI.tokenDeposit : Web3.utils.toBN('0'),
+      tokenBalanceI: balanceA.tokenDeposit ? balanceI.tokenDeposit : Web3.utils.toBN('0'),
     }
     let signer = Connext.recoverSignerFromChannelStateUpdate(state)
     if (signer.toLowerCase() !== this.ingridAddress.toLowerCase()) {
@@ -3046,12 +2946,11 @@ class Connext {
 
     const result = await this.channelManagerInstance.methods
       .consensusCloseChannel(
-        channelId, 
-        nonce, 
-        [ state.ethBalanceA, state.ethBalanceI, state.tokenBalanceA, state.tokenBalanceI ], 
-        sigA, 
-        sigI
-      )
+        channelId,
+        nonce,
+        [ state.ethBalanceA, state.ethBalanceI, state.tokenDepositA, state.tokenDepositI ],
+        sigA,
+        sigI)
       .send({
         from: sender,
         gas: 1000000
@@ -3113,7 +3012,7 @@ class Connext {
     }
     const lc = await this.getChannelById(lcId)
     if (!lc) {
-      // hub does not have lc, may be chainsaw issues
+      // hub does not have channel, may be chainsaw issues
       throw new ChannelOpenError(methodName, 'Channel is not openChanneled with hub')
     }
     if (sender && sender.toLowerCase() === lc.partyA) {
@@ -3318,10 +3217,10 @@ class Connext {
     }
     const ethBalanceA = balanceA.ethDeposit ? balanceA.ethDeposit : Web3.utils.toBN('0')
     const tokenBalanceA = balanceA.tokenDeposit ? balanceA.tokenDeposit : Web3.utils.toBN('0')
-    
+
     let merkle, stateHash
     if (proof === null) {
-      // generate proof from lc
+      // generate proof from channel
       stateHash = Connext.createThreadStateUpdateFingerprint({
         channelId: threadId,
         nonce: 0,
@@ -3543,14 +3442,14 @@ class Connext {
     return results
   }
 
-  async byzantineCloseChannelContractHandler ({ channelId, sender = null }) {
+  async byzantineCloseChannelContractHandler ({ lcId, sender = null }) {
     const methodName = 'byzantineCloseChannelContractHandler'
     const isHexStrict = { presence: true, isHexStrict: true }
     const isAddress = { presence: true, isAddress: true }
     Connext.validatorsResponseToError(
-      validate.single(channelId, isHexStrict),
+      validate.single(lcId, isHexStrict),
       methodName,
-      'channelId'
+      'lcId'
     )
     if (sender) {
       Connext.validatorsResponseToError(
@@ -3563,7 +3462,7 @@ class Connext {
       sender = accounts[0].toLowerCase()
     }
     const results = await this.channelManagerInstance.methods
-      .byzantineCloseChannel(channelId)
+      .byzantineCloseChannel(lcId)
       .send({
         from: sender,
         gas: '470000'
@@ -3598,14 +3497,14 @@ class Connext {
   }
 
   // ***************************************
-  // *********** INGRID GETTERS ************
+  // *********** HUB GETTERS ************
   // ***************************************
 
   /**
-   * Requests the unjoined virtual channels that have been initiated with you. All threads are unidirectional, and only the reciever of payments may have unjoined threads.
+   * Requests the unjoined threads that have been initiated with you. All threads are unidirectional, and only the reciever of payments may have unjoined threads.
    *
-   * @param {String} partyB - (optional) ETH address of party who has yet to join virtual channel threads.
-   * @returns {Promise} resolves to an array of unjoined virtual channel objects
+   * @param {String} partyB - (optional) ETH address of party who has yet to join thread threads.
+   * @returns {Promise} resolves to an array of unjoined thread objects
    */
   async getUnjoinedThreads (partyB = null) {
     const methodName = 'getUnjoinedThreads'
@@ -3626,14 +3525,14 @@ class Connext {
     return response.data
   }
 
-  async getThreadStateByNonce ({ channelId, nonce }) {
+  async getThreadStateByNonce ({ threadId, nonce }) {
     const methodName = 'getThreadStateByNonce'
     const isHexStrict = { presence: true, isHexStrict: true }
     const isPositiveInt = { presence: true, isPositiveInt: true }
     Connext.validatorsResponseToError(
-      validate.single(channelId, isHexStrict),
+      validate.single(threadId, isHexStrict),
       methodName,
-      'channelId'
+      'threadId'
     )
     Connext.validatorsResponseToError(
       validate.single(nonce, isPositiveInt),
@@ -3641,7 +3540,7 @@ class Connext {
       'nonce'
     )
     const response = await this.networking.get(
-      `virtualchannel/${channelId}/update/nonce/${nonce}`
+      `virtualchannel/${threadId}/update/nonce/${nonce}`
     )
     return response.data
   }
@@ -3667,7 +3566,7 @@ class Connext {
   }
 
   async getLatestChannelState (channelId, sigs = null) {
-    // lcState == latest ingrid signed state
+    // lcState == latest hub signed state
     const methodName = 'getLatestChannelState'
     const isHexStrict = { presence: true, isHexStrict: true }
     Connext.validatorsResponseToError(
@@ -3686,13 +3585,13 @@ class Connext {
   }
 
   /**
-   * Returns an array of the virtual channel states associated with the given ledger channel.
+   * Returns an array of the thread states associated with the given channel.
    *
-   * @param {String} channelId - ID of the ledger channel
-   * @returns {Promise} resolves to an Array of virtual channel objects
+   * @param {String} channelId - ID of the channel
+   * @returns {Promise} resolves to an Array of thread objects
    */
   async getThreadsByChannelId (channelId) {
-    // lcState == latest ingrid signed state
+    // lcState == latest hub signed state
     const methodName = 'getThreadsByChannelId'
     const isHexStrict = { presence: true, isHexStrict: true }
     Connext.validatorsResponseToError(
@@ -3708,13 +3607,13 @@ class Connext {
   }
 
   /**
-   * Returns the ledger channel id between the supplied address and ingrid.
+   * Returns the channel id between the supplied address and hub.
    *
    * If no address is supplied, accounts[0] is used as partyA.
    *
-   * @param {String} partyA - (optional) address of the partyA in the channel with Ingrid.
-   * @param {Number} status - (optional) state of virtual channel, can be 0 (opening), 1 (opened), 2 (settling), or 3 (settled). Defaults to open channel.
-   * @returns {Promise} resolves to either the ledger channel id between hub and supplied partyA, or an Array of the channel IDs between hub and partyA.
+   * @param {String} partyA - (optional) address of the partyA in the channel with the hub.
+   * @param {Number} status - (optional) state of thread, can be 0 (opening), 1 (opened), 2 (settling), or 3 (settled). Defaults to open channel.
+   * @returns {Promise} resolves to either the channel id between hub and supplied partyA, or an Array of the channel IDs between hub and partyA.
    */
   async getChannelIdByPartyA (partyA = null, status = null) {
     const methodName = 'getChannelIdByPartyA'
@@ -3738,7 +3637,7 @@ class Connext {
     } else {
       status = Object.keys(CHANNEL_STATES)[1]
     }
-    // get my LC with ingrid
+    // get my LC with hub
     const response = await this.networking.get(
       `ledgerchannel/a/${partyA}?status=${status}`
     )
@@ -3753,10 +3652,10 @@ class Connext {
   }
 
   /**
-   * Returns an object representing the virtual channel in the database.
+   * Returns an object representing the thread in the database.
    *
-   * @param {String} threadId - the ID of the virtual channel
-   * @returns {Promise} resolves to an object representing the virtual channel
+   * @param {String} threadId - the ID of the thread
+   * @returns {Promise} resolves to an object representing the thread
    */
   async getThreadById (threadId) {
     const methodName = 'getThreadById'
@@ -3779,12 +3678,12 @@ class Connext {
   }
 
   /**
-   * Returns an object representing the open virtual channel between the two parties in the database.
+   * Returns an object representing the open thread between the two parties in the database.
    *
    * @param {Object} params - the method object
-   * @param {String} params.partyA - ETH address of partyA in virtual channel
-   * @param {String} params.partyB - ETH address of partyB in virtual channel
-   * @returns {Promise} resolves to the virtual channel
+   * @param {String} params.partyA - ETH address of partyA in thread
+   * @param {String} params.partyB - ETH address of partyB in thread
+   * @returns {Promise} resolves to the thread
    */
   async getThreadByParties ({ partyA, partyB }) {
     const methodName = 'getThreadByParties'
@@ -3845,16 +3744,16 @@ class Connext {
       methodName,
       'threadId'
     )
-    // get LC for other VC party and ingrid
+    // get LC for other VC party and hub
     const thread = await this.getThreadById(threadId)
     return thread.subchanBI
   }
 
   /**
-   * Returns an object representing a ledger channel.
+   * Returns an object representing a channel.
    *
-   * @param {String} lcId - the ledger channel id
-   * @returns {Promise} resolves to the ledger channel object
+   * @param {String} lcId - the channel id
+   * @returns {Promise} resolves to the channel object
    */
   async getChannelById (channelId) {
     const methodName = 'getChannelById'
@@ -3866,6 +3765,7 @@ class Connext {
     )
     try {
       const res = await this.networking.get(`ledgerchannel/${channelId}`)
+
       return res.data
     } catch (e) {
       if (e.status === 404) {
@@ -3876,11 +3776,11 @@ class Connext {
   }
 
   /**
-   * Returns object representing the ledger channel between partyA and Ingrid
+   * Returns object representing the channel between partyA and the hub
    *
-   * @param {String} partyA - (optional) partyA in ledger channel. Default is accounts[0]
-   * @param {Number} status - (optional) state of virtual channel, can be 0 (opening), 1 (opened), 2 (settling), or 3 (settled). Defaults to open channel.
-   * @returns {Promise} resolves to ledger channel object
+   * @param {String} partyA - (optional) partyA in channel. Default is accounts[0]
+   * @param {Number} status - (optional) state of thread, can be 0 (opening), 1 (opened), 2 (settling), or 3 (settled). Defaults to open channel.
+   * @returns {Promise} resolves to channel object
    */
   async getChannelByPartyA (partyA = null, status = null) {
     const methodName = 'getChannelByPartyA'
@@ -3983,19 +3883,19 @@ class Connext {
   }
 
   // ***************************************
-  // *********** INGRID HELPERS ************
+  // *********** HUB HELPERS ************
   // ***************************************
 
-  // requests ingrid deposits in a given subchan
+  // requests hub deposits in a given subchannel
   /**
-   * Requests ingrid deposits into a given subchannel. Ingrid must have sufficient balance in the "B" subchannel to cover the virtual channel balance of "A" since Ingrid is assuming the financial counterparty risk.
+   * Requests hub deposits into a given subchannel. Hub must have sufficient balance in the "B" subchannel to cover the thread balance of "A" since the Hub is assuming the financial counterparty risk.
    *
-   * This function is to be used if the hub has insufficient balance in the ledger channel to create proposed virtual channels.
+   * This function is to be used if the hub has insufficient balance in the channel to create proposed threads.
    *
    * @param {Object} params - the method object
-   * @param {String} params.channelId - id of the ledger channel
+   * @param {String} params.channelId - id of the channel
    * @param {BN} params.deposit - the deposit in Wei
-   * @returns {Promise} resolves to the transaction hash of Ingrid calling the deposit function
+   * @returns {Promise} resolves to the transaction hash of hub calling the deposit function
    */
   async requestHubDeposit ({ channelId, deposit }) {
     const methodName = 'requestHubDeposit'
@@ -4012,23 +3912,22 @@ class Connext {
       'deposit'
     )
     const accountBalance = await this.web3.eth.getBalance(this.ingridAddress)
-    if (deposit.ethDeposit && deposit.ethDeposit.gt(Web3.utils.toBN(accountBalance))) {
+    if (deposit.ethBalanceI && deposit.ethBalanceI.gt(Web3.utils.toBN(accountBalance))) {
       throw new ChannelUpdateError(
         methodName,
-        'Hub does not have sufficient ETH balance for requested deposit'
+        'Hub does not have sufficient balance for requested deposit'
       )
     }
     const response = await this.networking.post(
       `ledgerchannel/${channelId}/requestdeposit`,
       {
-        ethDeposit: deposit.ethDeposit ? deposit.ethDeposit.toString() : '0',
-        tokenDeposit: deposit.tokenDeposit ? deposit.tokenDeposit.toString(): '0'
+        deposit: deposit.toString()
       }
     )
     return response.data.txHash
   }
 
-  // ingrid verifies the threadInitialStates and sets up vc and countersigns lc updates
+  // Hub verifies the threadInitialStates and sets up thread and countersigns channel updates
   async joinThreadHandler ({ subchanSig, threadSig, channelId }) {
     // validate params
     const methodName = 'joinThreadHandler'
@@ -4049,7 +3948,7 @@ class Connext {
       methodName,
       'channelId'
     )
-    // ingrid should verify vcS0A and vcS0b
+    // Hub should verify vcS0A and vcS0b
     const response = await this.networking.post(
       `virtualchannel/${channelId}/join`,
       {
@@ -4145,7 +4044,7 @@ class Connext {
       const accounts = await this.web3.eth.getAccounts()
       signer = accounts[0].toLowerCase()
     }
-    // signer should always be lc partyA
+    // signer should always be channel partyA
     if (signer.toLowerCase() !== channel.partyA) {
       throw new ThreadOpenError(methodName, 'Invalid signer detected')
     }
@@ -4156,16 +4055,16 @@ class Connext {
     ) {
       throw new ThreadOpenError(methodName, 'Invalid signer detected')
     }
-    // lc must be open
+    // channel must be open
     if (CHANNEL_STATES[channel.state] !== 1) {
       throw new ThreadOpenError(methodName, 'Invalid subchannel state')
     }
-    // vcId should be unique
+    // threadId should be unique
     let thread = await this.getThreadById(threadInitialState.channelId)
     if (thread && THREAD_STATES[thread.state] !== 0) {
       throw new ThreadOpenError(methodName, 'Invalid channel id in threadInitialState')
     }
-    // vc0 validation
+    // thread0 validation
     if (threadInitialState.nonce !== 0) {
       throw new ThreadOpenError(methodName, 'Thread nonce is nonzero')
     }
@@ -4193,22 +4092,22 @@ class Connext {
     threadInitialStates.push(threadInitialState) // add new vc state to hash
     let newRootHash = Connext.generateThreadRootHash({ threadInitialStates: threadInitialStates })
 
-    // new LC balances should reflect the VC deposits
-    // new balanceA = balanceA - (their VC balance)
-    const channelEthBalanceA = signer.toLowerCase() === threadInitialState.partyA.toLowerCase() 
-      ? Web3.utils.toBN(channel.ethBalanceA).sub(threadInitialState.ethBalanceA) // viewer is signing LC update
-      : Web3.utils.toBN(channel.ethBalanceA).sub(threadInitialState.ethBalanceB) // performer is signing LC update
-    
-    const channelTokenBalanceA = signer.toLowerCase() === threadInitialState.partyA.toLowerCase() 
-      ? Web3.utils.toBN(channel.tokenBalanceA).sub(threadInitialState.tokenBalanceA) 
+    // new channel balances should reflect the thread deposits
+    // new balanceA = balanceA - (their thread balance)
+    const channelEthBalanceA = signer.toLowerCase() === threadInitialState.partyA.toLowerCase()
+      ? Web3.utils.toBN(channel.ethBalanceA).sub(threadInitialState.ethBalanceA) // viewer is signing channel update
+      : Web3.utils.toBN(channel.ethBalanceA).sub(threadInitialState.ethBalanceB) // performer is signing channel update
+
+    const channelTokenBalanceA = signer.toLowerCase() === threadInitialState.partyA.toLowerCase()
+      ? Web3.utils.toBN(channel.tokenBalanceA).sub(threadInitialState.tokenBalanceA)
       : Web3.utils.toBN(channel.tokenBalanceA).sub(threadInitialState.tokenBalanceB)
-    
+
     // new balanceI = balanceI - (counterparty VC balance)
-    const channelTokenBalanceI = signer.toLowerCase() === threadInitialState.partyA.toLowerCase() 
-      ? Web3.utils.toBN(channel.tokenBalanceI).sub(threadInitialState.tokenBalanceB) 
+    const channelTokenBalanceI = signer.toLowerCase() === threadInitialState.partyA.toLowerCase()
+      ? Web3.utils.toBN(channel.tokenBalanceI).sub(threadInitialState.tokenBalanceB)
       : Web3.utils.toBN(channel.tokenBalanceI).sub(threadInitialState.tokenBalanceA)
 
-    const channelEthBalanceI = signer.toLowerCase() === threadInitialState.partyA.toLowerCase() 
+    const channelEthBalanceI = signer.toLowerCase() === threadInitialState.partyA.toLowerCase()
       ? Web3.utils.toBN(channel.ethBalanceI).sub(threadInitialState.ethBalanceB)
       : Web3.utils.toBN(channel.ethBalanceI).sub(threadInitialState.ethBalanceA) //
 
@@ -4228,12 +4127,8 @@ class Connext {
         tokenDeposit: channelTokenBalanceI
       },
       signer: signer,
-      hubBond: {
-        ethDeposit: threadInitialState.ethBalanceA
-          .add(threadInitialState.ethBalanceB),
-        tokenDeposit: threadInitialState.tokenBalanceA
-          .add(threadInitialState.tokenBalanceB)
-      }
+      hubEthBond: threadInitialState.ethBalanceA.add(threadInitialState.ethBalanceB),
+      hubTokenBond: threadInitialState.tokenBalanceA.add(threadInitialState.tokenBalanceB),
     }
     const sigAtoI = await this.createChannelStateUpdate(updateAtoI)
     return sigAtoI
@@ -4281,7 +4176,7 @@ class Connext {
 
     let threadInitialStates = await this.getThreadInitialStates(subchan.channelId)
     // array of state objects, which include the channel id and nonce
-    // remove initial state of vcN
+    // remove initial state of threadN
     threadInitialStates = threadInitialStates.filter(threadState => {
       return threadState.channelId !== latestThreadState.channelId
     })
@@ -4291,9 +4186,9 @@ class Connext {
     const subchanEthBalanceA = signer.toLowerCase() === latestThreadState.partyA ? Web3.utils.toBN(subchan.ethBalanceA).add(Web3.utils.toBN(latestThreadState.ethBalanceA)) : Web3.utils.toBN(subchan.ethBalanceA).add(Web3.utils.toBN(latestThreadState.ethBalanceB))
     // add counterparty balance from thread to channel balance
     const subchanEthBalanceI = signer.toLowerCase() === latestThreadState.partyA ? Web3.utils.toBN(subchan.ethBalanceI).add(Web3.utils.toBN(latestThreadState.ethBalanceB)) : Web3.utils.toBN(subchan.ethBalanceI).add(Web3.utils.toBN(latestThreadState.ethBalanceA))
-    
+
     const subchanTokenBalanceA = signer.toLowerCase() === latestThreadState.partyA ? Web3.utils.toBN(subchan.tokenBalanceA).add(Web3.utils.toBN(latestThreadState.tokenBalanceA)) : Web3.utils.toBN(subchan.tokenBalanceA).add(Web3.utils.toBN(latestThreadState.tokenBalanceB))
-    
+
     const subchanTokenBalanceI = signer.toLowerCase() === latestThreadState.partyA ? Web3.utils.toBN(subchan.tokenBalanceI).add(Web3.utils.toBN(latestThreadState.tokenBalanceB)) : Web3.utils.toBN(subchan.tokenBalanceI).add(Web3.utils.toBN(latestThreadState.tokenBalanceA))
 
     const updateAtoI = {
@@ -4311,12 +4206,8 @@ class Connext {
         ethDeposit: subchanEthBalanceI,
         tokenDeposit: subchanTokenBalanceI,
       },
-      hubBond: {
-        ethDeposit:  Web3.utils.toBN(latestThreadState.ethBalanceA)
-          .add(Web3.utils.toBN(latestThreadState.ethBalanceB)),
-        tokenDeposit: Web3.utils.toBN(latestThreadState.tokenBalanceA)
-          .add(Web3.utils.toBN(latestThreadState.tokenBalanceB)),
-      },
+      hubEthBond: Web3.utils.toBN(latestThreadState.ethBalanceA).add(Web3.utils.toBN(latestThreadState.ethBalanceB)),
+      hubTokenBond: Web3.utils.toBN(latestThreadState.tokenBalanceA).add(Web3.utils.toBN(latestThreadState.tokenBalanceB)),
       signer,
     }
     const sigAtoI = await this.createChannelStateUpdate(updateAtoI)

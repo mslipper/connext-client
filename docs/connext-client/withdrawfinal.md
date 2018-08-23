@@ -1,13 +1,13 @@
-# withdraw
+# withdrawFinal
 
-**connext.withdraw\(**sender**\)** ⇒ `Promise`closeChannel bonded funds from channel after a channel is challenge-closed and the challenge period expires by calling withdraw using the internal web3 instance.
+**connext.withdrawFinal\(**sender**\)** ⇒ `Promise`Withdraw bonded funds from channel after a channel is challenge-closed and the challenge period expires by calling withdrawFinal using the internal web3 instance.
 
 Looks up channel by the account address of the client-side user if sender parameter is not supplied.
 
-Calls the "byzantinecloseThread" function on the contract.
+Calls the "byzantineCloseChannel" function on the contract.
 
 **Kind**: instance method of [`Connext`](./#Connext)  
-**Returns**: `Promise` - resolves to the transaction hash from calling byzantinecloseThread
+**Returns**: `Promise` - resolves to the transaction hash from calling byzantineCloseChannel
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -16,10 +16,10 @@ Calls the "byzantinecloseThread" function on the contract.
 **Example**
 
 ```javascript
-const success = await connext.closeChannel()
+const success = await connext.withdraw()
 if (!success) {
   // wait out challenge timer
-  await connext.withdraw()
+  await connext.withdrawFinal()
 }
 ```
 

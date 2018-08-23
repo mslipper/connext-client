@@ -25,7 +25,7 @@ let partyB
 let partyC
 let partyD
 
-describe('closeThread()', () => {
+describe('closeChannel()', () => {
   before('init client and accounts', async () => {
     accounts = await web3.eth.getAccounts()
     ingridAddress = accounts[0]
@@ -63,7 +63,7 @@ describe('closeThread()', () => {
       const threadId =
         '0x0100000000000000000000000000000000000000000000000000000000000000'
       const sender = partyA
-      const sigItoA = await client.closeThread(threadId, sender)
+      const sigItoA = await client.closeChannel(threadId, sender)
       const channelId =
         '0x1000000000000000000000000000000000000000000000000000000000000000'
       const sigParams = {
@@ -88,7 +88,7 @@ describe('closeThread()', () => {
       const threadId =
         '0x0200000000000000000000000000000000000000000000000000000000000000'
       const sender = partyC
-      const sigItoA = await client.closeThread(threadId, sender)
+      const sigItoA = await client.closeChannel(threadId, sender)
       const channelId =
         '0x3000000000000000000000000000000000000000000000000000000000000000'
       const sigParams = {
@@ -113,7 +113,7 @@ describe('closeThread()', () => {
       const threadId =
         '0x0300000000000000000000000000000000000000000000000000000000000000'
       const sender = partyD
-      const sigItoA = await client.closeThread(threadId, sender)
+      const sigItoA = await client.closeChannel(threadId, sender)
       const channelId =
         '0x4000000000000000000000000000000000000000000000000000000000000000'
       const sigParams = {
@@ -143,7 +143,7 @@ describe('closeThread()', () => {
   describe('parameter validation', () => {
     it('should fail if no threadId is provided', async () => {
       try {
-        await client.closeThread()
+        await client.closeChannel()
       } catch (e) {
         expect(e.statusCode).to.equal(200)
       }
@@ -153,7 +153,7 @@ describe('closeThread()', () => {
       const threadId = null
       const sender = partyD
       try {
-        await client.closeThread(threadId, sender)
+        await client.closeChannel(threadId, sender)
       } catch (e) {
         expect(e.statusCode).to.equal(200)
       }
@@ -163,7 +163,7 @@ describe('closeThread()', () => {
       const threadId = 'fail'
       const sender = partyD
       try {
-        await client.closeThread(threadId, sender)
+        await client.closeChannel(threadId, sender)
       } catch (e) {
         expect(e.statusCode).to.equal(200)
       }
@@ -174,7 +174,7 @@ describe('closeThread()', () => {
         '0x0300000000000000000000000000000000000000000000000000000000000000'
       const sender = 'fail'
       try {
-        await client.closeThread(threadId, sender)
+        await client.closeChannel(threadId, sender)
       } catch (e) {
         expect(e.statusCode).to.equal(200)
       }

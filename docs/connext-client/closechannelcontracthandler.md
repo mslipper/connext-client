@@ -1,2 +1,2 @@
-# closeThreadContractHandler
+# closeChannelContractHandler
 

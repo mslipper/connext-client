@@ -1,17 +1,19 @@
-import BN from "bn.js";
+import { BigNumber } from "bignumber.js";
 
 export = Connext;
 
 declare class Connext {
   constructor(opts: Connext.ConnextOptions);
 
-  openChannel(initialDeposit: Connext.BalanceOptions): Promise<any>;
+  openChannel(initialDeposit: BigNumber): Promise<any>;
 
-  deposit(amount: Connext.BalanceOptions): Promise<any>;
-
-  closeChannel(): Promise<any>;
+  deposit(amount: BigNumber): Promise<any>;
 
   withdraw(): Promise<any>;
+
+  withdrawFinal(): Promise<any>;
+
+  checkpoint(): Promise<any>;
 
   openThread(opts: Connext.OpenThreadOptions): Promise<any>;
 
@@ -23,33 +25,23 @@ declare class Connext {
     opts: Connext.CosignBalanceUpdateOptions
   ): Promise<string>;
 
-  closeThread(channelId: string): Promise<any>;
+  fastCloseChannel(channelId: string): Promise<any>;
 
-  closeThreads(channels: string[]): Promise<any>;
+  closeChannel(channelId: string): Promise<any>;
 
-  static createChannelStateUpdateFingerprint(
-    opts: Connext.FingerprintChannelUpdate
-  ): string;
+  closeChannels(channels: Connext.Channel[]): Promise<any>;
 
-  static recoverSignerFromChannelStateUpdate(
-    opts: Connext.RecoverChannelUpdate
-  ): string;
+  static createChannelStateUpdateFingerprint(opts: Connext.ChannelUpdate): string;
 
-  static createThreadStateUpdateFingerprint(
-    opts: Connext.FingerprintThreadUpdate
-  ): string;
+  static recoverSignerFromChannelStateUpdate(opts: Connext.RecoverChannelUpdate): string;
 
-  static recoverSignerFromThreadStateUpdate(
-    opts: Connext.RecoverThreadUpdate
-  ): string;
+  static createThreadStateUpdateFingerprint(opts: Connext.ThreadUpdate): string;
 
-  static generateThreadRootHash(
-    threadInitialStates: Connext.ThreadInitialStates
-  ): string;
+  static recoverSignerFromThreadStateUpdate(opts: Connext.RecoverThreadUpdate): string;
 
-  static generateMerkleTree(
-    threadInitialStates: Connext.FingerprintThreadUpdate[]
-  ): string;
+  static generateThreadRootHash(threadInitialStates: any): string;
+
+  static generateMerkleTree(threadInitialStates: Connext.ThreadUpdate[]): string;
 }
 
 declare namespace Connext {
@@ -61,28 +53,29 @@ declare namespace Connext {
     contractAddress: string;
   }
 
-  export interface BalanceOptions {
-    tokenDeposit: BN;
-    ethDeposit: BN;
-  }
-
   export interface OpenThreadOptions {
     to: string;
-    deposit: BalanceOptions;
+    deposit: BigNumber;
+  }
+
+  export interface BalanceOptions {
+    tokenDeposit: BigNumber;
+    ethDeposit: BigNumber;
   }
 
   export interface UpdateBalanceOptions {
     channelId: string;
-    balanceA: BalanceOptions;
-    balanceB: BalanceOptions;
+    balanceA: BigNumber;
+    balanceB: BigNumber;
   }
 
   export interface CosignBalanceUpdateOptions {
     channelId: string;
-    nonce: BalanceOptions;
+    balance: BigNumber;
+    sig: string;
   }
 
-  export interface FingerprintChannelUpdate {
+  export interface ChannelUpdate {
     isClose: boolean;
     channelId: string;
     nonce: number;
@@ -90,36 +83,53 @@ declare namespace Connext {
     vcRootHash: string;
     partyA: string;
     partyI: string;
-    ethBalanceA: BN;
-    ethBalanceI: BN;
-    tokenBalanceA: BN;
-    tokenBalanceI: BN;
+    balanceA: BalanceOptions;
+    balanceI: BalanceOptions;
   }
 
-  export interface RecoverChannelUpdate extends FingerprintChannelUpdate {
+  export interface RecoverChannelUpdate {
     sig: string;
+    isClose: boolean;
+    channelId: string;
+    nonce: number;
+    openVcs: number;
+    vcRootHash: string;
+    partyA: string;
+    partyI: string;
+    ethBalanceA: BigNumber;
+    ethBalanceI: BigNumber;
+    tokenBalanceA: BigNumber;
+    tokenBalanceI: BigNumber;
   }
 
-  export interface FingerprintThreadUpdate {
+  export interface ThreadUpdate {
     channelId: string;
     nonce: number;
     partyA: string;
     partyB: string;
-    ethBalanceA: BN;
-    ethBalanceB: BN;
-    tokenBalanceA: BN;
-    tokenBalanceB: BN;
+    balanceA: BalanceOptions;
+    balanceB: BalanceOptions;
+
   }
 
-  export interface RecoverThreadUpdate extends FingerprintThreadUpdate {
+  export interface RecoverThreadUpdate {
     sig: string;
+    ethBalanceA: BigNumber;
+    ethBalanceI: BigNumber;
+    tokenBalanceA: BigNumber;
+    tokenBalanceI: BigNumber;
+    ethBalanceA: BigNumber;
+    ethBalanceB: BigNumber;
+    tokenBalanceA: BigNumber;
+    tokenBalanceB: BigNumber;
   }
 
   export interface ThreadInitialStates {
-    threadInitialStates: FingerprintThreadUpdate[];
+    threadInitialStates: ThreadUpdate[];
   }
 
   export interface Channel {
     channelId: string;
+    balance: BigNumber;
   }
 }
