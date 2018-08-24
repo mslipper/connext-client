@@ -167,6 +167,14 @@ export function validatePurchasePurchaseMeta (meta) {
   }
 }
 
+export function validateWithdrawalPurchaseMeta (meta) {
+  if (!meta.fields) {
+    return false
+  }
+  const {receiver} = meta.fields
+  return !!receiver && isAddress(receiver)
+}
+
 export function validateBalance (value) {
   if (!value) {
     return false
