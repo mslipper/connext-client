@@ -1762,7 +1762,7 @@ var Connext = function () {
                 break;
 
               case 35:
-                if (!balanceB.ethDeposit.lte(Web3.utils.toBN(thread.ethBalanceB))) {
+                if (!balanceB.ethDeposit.lt(Web3.utils.toBN(thread.ethBalanceB))) {
                   _context11.next = 37;
                   break;
                 }
@@ -1774,7 +1774,7 @@ var Connext = function () {
                 return _context11.abrupt('break', 51);
 
               case 39:
-                if (!balanceB.tokenDeposit.lte(Web3.utils.toBN(thread.tokenBalanceB))) {
+                if (!balanceB.tokenDeposit.lt(Web3.utils.toBN(thread.tokenBalanceB))) {
                   _context11.next = 41;
                   break;
                 }
@@ -1786,7 +1786,7 @@ var Connext = function () {
                 return _context11.abrupt('break', 51);
 
               case 43:
-                if (!balanceB.ethDeposit.lte(Web3.utils.toBN(thread.ethBalanceB))) {
+                if (!balanceB.ethDeposit.lt(Web3.utils.toBN(thread.ethBalanceB))) {
                   _context11.next = 45;
                   break;
                 }
@@ -1794,7 +1794,7 @@ var Connext = function () {
                 throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB ETH balance');
 
               case 45:
-                if (!balanceB.tokenDeposit.lte(Web3.utils.toBN(thread.tokenBalanceB))) {
+                if (!balanceB.tokenDeposit.lt(Web3.utils.toBN(thread.tokenBalanceB))) {
                   _context11.next = 47;
                   break;
                 }
