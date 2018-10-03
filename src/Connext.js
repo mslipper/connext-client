@@ -1119,24 +1119,24 @@ class Connext {
     let proposedEthBalance, proposedTokenBalance
     switch (CHANNEL_TYPES[updateType]) {
       case CHANNEL_TYPES.ETH:
-        if (balanceB.ethDeposit.lte(Web3.utils.toBN(thread.ethBalanceB))) {
+        if (balanceB.ethDeposit.lt(Web3.utils.toBN(thread.ethBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB ETH balance')
         }
         proposedEthBalance = Web3.utils.toBN(balanceA.ethDeposit).add(balanceB.ethDeposit) // proposed balance
         break
       
       case CHANNEL_TYPES.TOKEN:
-        if (balanceB.tokenDeposit.lte(Web3.utils.toBN(thread.tokenBalanceB))) {
+        if (balanceB.tokenDeposit.lt(Web3.utils.toBN(thread.tokenBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB token balance')
         }
         proposedTokenBalance = Web3.utils.toBN(balanceA.tokenDeposit).add(balanceB.tokenDeposit)
         break
       
       case CHANNEL_TYPES.TOKEN_ETH:
-        if (balanceB.ethDeposit.lte(Web3.utils.toBN(thread.ethBalanceB))) {
+        if (balanceB.ethDeposit.lt(Web3.utils.toBN(thread.ethBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB ETH balance')
         }
-        if (balanceB.tokenDeposit.lte(Web3.utils.toBN(thread.tokenBalanceB))) {
+        if (balanceB.tokenDeposit.lt(Web3.utils.toBN(thread.tokenBalanceB))) {
           throw new ThreadUpdateError(methodName, 'Thread updates can only increase partyB token balance')
         }
         proposedEthBalance = Web3.utils.toBN(balanceA.ethDeposit).add(balanceB.ethDeposit)
