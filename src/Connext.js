@@ -1367,7 +1367,30 @@ class Connext {
 
     // get latest i-signed lc state update
     let channelState = await this.getLatestChannelState(channel.channelId, ['sigI'])
+    let channelState2 = await this.getLatestChannelState(channel.channelId, ['sigA'])
     // transform if needed
+
+    if (!channelState) {
+      // channel has never been updated
+      channelState = {
+        isClose: false,
+        channelId: channel.channelId,
+        nonce: 0,
+        openVcs: 0,
+        vcRootHash: Connext.generateThreadRootHash({ threadInitialStates: [] }),
+        partyA: channel.partyA,
+        partyI: this.ingridAddress,
+          balanceA: {
+            tokenDeposit: Web3.utils.toBN(channel.tokenBalanceA),
+            ethDeposit: Web3.utils.toBN(channel.ethBalanceA),
+          },
+          balanceI: {
+            tokenDeposit: Web3.utils.toBN(channel.tokenBalanceI),
+            ethDeposit: Web3.utils.toBN(channel.ethBalanceI),
+          }
+      }
+    }
+
     if (!channelState.balanceA || !channelState.balanceI) {
       channelState.balanceA = {
         ethDeposit: Web3.utils.toBN(channelState.ethBalanceA),
@@ -3699,7 +3722,7 @@ class Connext {
     if (!sigs) {
       sigs = ['sigI', 'sigA']
     }
-
+    
     const response = await this.networking.get(
       `ledgerchannel/${channelId}/update/latest?sig[]=sigI`
     )
@@ -4374,16 +4397,27 @@ class Connext {
     const channel = await this.getChannelByPartyA(sender.toLowerCase())
     if (channelState) {
       // openVcs?
-      if (Number(channelState.openVcs) !== 0) {
+      if (channelState.openVcs && Number(channelState.openVcs) !== 0) {
         throw new ChannelCloseError(methodName, 'Cannot close channel with open VCs')
       }
       // empty root hash?
-      if (channelState.vcRootHash !== Connext.generateThreadRootHash({ threadInitialStates: [] })) {
-        throw new ChannelCloseError(methodName, 'Cannot close channel with open VCs')
+      if (channelState.openVcs && channelState.vcRootHash !== Connext.generateThreadRootHash({ threadInitialStates: [] })) {
+        throw new ChannelCloseError(methodName, 'Cannot close channel with empty root hash')
       }
+
+      const signNewlyOpenedChannel = () => this.createChannelStateUpdate({
+        isClose: false,
+        channelId: channelState.channelId,
+        nonce: channelState.nonce,
+        openVcs: channelState.openVcs,
+        vcRootHash: channelState.vcRootHash,
+        partyA: channelState.partyA,
+        balanceA: channelState.balanceA,
+        balanceI: channelState.balanceI,
+      })
       // member-signed?
       const signer = Connext.recoverSignerFromChannelStateUpdate({
-        sig: channelState.sigI ? channelState.sigI : channelState.sigA,
+        sig: channelState.sigI || channelState.sigA || await signNewlyOpenedChannel(),
         isClose: false,
         channelId: channel.channelId,
         nonce: channelState.nonce,
