@@ -20,9 +20,11 @@
 * Payroll processors
 * Subscription model companies
 
-## Decentralized Exchanges
+## Decentralized Exchange
 
 * High frequency trading
+* Mid-payment asset swaps
+* Cross-chain streaming swaps
 
 There are undoubtedly use cases for Connext that we haven't thought of or encountered yet, so if you think this could be valuable for your project, please reach out to support@connext.network and let us know!
 

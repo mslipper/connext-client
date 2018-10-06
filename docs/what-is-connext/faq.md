@@ -2,7 +2,9 @@
 
 ## What is the status of Connext?
 
-Connext is [_live_ in production](https://medium.com/connext/our-first-hub-is-live-on-mainnet-b5660486635e) with our [first Hub](https://spank.live). DIY Hubs are coming soon, but if you want to get started right away, [join our discord](https://discord.gg/KFqnvuM) or get in touch directly at support@connext.network.
+Connext is [_live_ in production](https://medium.com/connext/our-first-hub-is-live-on-mainnet-b5660486635e). 
+
+You can set up your own Hub by following the instructions at [Getting Started](../getting-started/). If you have any questions, feel free to reach out to the team directly on [our discord](https://discord.gg/KFqnvuM).
 
 ## What is a state channel?
 
@@ -29,13 +31,17 @@ Plasma is a [proposed framework](http://plasma.io/) for scaling Ethereum capacit
 
 ## Are there fees?
 
-Our client, kernel and contracts are open source and free to use! 
+Our implementation [Indra](https://github.com/ConnextProject/indra), our [client](../client-docs-2.0.md), and [contracts](https://github.com/ConnextProject/connext-client) are open source and free to use! 
 
 ## Is there a whitepaper?
 
 Not at the moment. We're seeing such a pressing need for Layer 2 scaling solutions that our time is best spent putting our ideas into action.
 
+## Is there a token?
+
+No. At present, we don't see any way to integrate a token into such low level infrastructure without either generating friction or creating usability barriers. Our goal is to be as permissionless as possible.
+
 ## How do I get started?
 
-See our [Getting Started](../getting-started.md) guide, and reach out to support@connext.network with any questions!
+See our [Getting Started](../getting-started/getting-started.md) guide, and reach out to support@connext.network with any questions!
 
