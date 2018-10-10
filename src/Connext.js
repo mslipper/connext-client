@@ -2932,60 +2932,16 @@ class Connext {
       )
     }
 
-    // determine deposit type
-    const { ethDeposit, tokenDeposit } = deposits
-    let depositType
-    if (
-      ethDeposit && 
-      !ethDeposit.isZero() && 
-      tokenDeposit && 
-      !tokenDeposit.isZero()
-    ) {
-      // token and eth
-      tokenAddress = tokenAddress ? tokenAddress : channel.tokenAddress
-      depositType = Object.keys(CHANNEL_TYPES)[2]
-    } else if (tokenDeposit && !tokenDeposit.isZero()) {
-      tokenAddress = tokenAddress ? tokenAddress : channel.tokenAddress
-      depositType = Object.keys(CHANNEL_TYPES)[1]
-    } else if (ethDeposit && !ethDeposit.isZero()) {
-      depositType = Object.keys(CHANNEL_TYPES)[0]
-    }
-
-    let result
-    switch (CHANNEL_TYPES[depositType]) {
-      case CHANNEL_TYPES.ETH:
-        // call contract method
-        result = await this.channelManagerInstance.methods
-        .deposit(
-          channelId, // PARAM NOT IN CONTRACT YET, SHOULD BE
-          recipient,
-          deposits.ethDeposit,
-          false
-        )
-        .send({
-          from: sender,
-          value: deposits.ethDeposit,
-          gas: 1000000,
-        })
-        break
-      case CHANNEL_TYPES.TOKEN:
-      // must pre-approve transfer
-        result = await this.channelManagerInstance.methods
-          .deposit(
-            channelId,
-            recipient,
-            deposits.tokenDeposit,
-            true
-          )
-          .send({
-            from: sender,
-            gas: 1000000,
-          })
-        
-        break
-      default:
-        throw new ChannelUpdateError(methodName, `Invalid deposit type detected`)
-    }
+    const result = await this.channelManagerInstance.methods
+      .deposit(
+        channelId,
+        recipient,
+        [deposits.ethDeposit, deposits.tokenDeposit]
+      ).send({
+        from: sender,
+        value: deposits.ethDeposit,
+        gas: 1000000
+      })
 
     if (!result.transactionHash) {
       throw new ContractError(
